@@ -285,7 +285,7 @@ MySQL的默认隔离级别是可重复读
 
 #### （2）读已提交
 
-- **定义：** 事务只能读取其他**已经提交**的事务所做的修改。这是**Oracle 等数据库的默认级别**。
+- **定义：** 读已提交（READ COMMITTED）指的是事务只能读取其他**已经提交的事务**所做的修改。这是**Oracle 等数据库的默认级别**。
 - **防止的问题：**
   - **脏读：** ✅ 防止。只能读到已提交的数据。
 - **允许的问题：**
@@ -890,6 +890,379 @@ commit; # 步骤6
 对name建索引：`create index idx_course_name on course(name);`，再次尝试case2，步骤4可以正常执行，因为name是索引。
 
 ## 四、锁
+
+### 1. 概述
+
+#### （1）概念
+
+锁是计算机协调多个进程或线程并发访问某一资源的机制。在数据库中，除传统的计算资源(CPU、RAM、I/O)的争用以外，数据也是一种供许多用户共享的资源。如何保证数据并发访问的一致性、有效性是所有数据库必须解决的一个问题，锁冲突也是影响数据库并发访问性能的一个重要因素。
+
+#### （2）分类
+
+MySQL中的锁，按照锁的粒度分，分为以下三类：
+
+- 全局锁:锁定数据库中的所有表。
+- 表级锁:每次操作锁住整张表。
+- 行级锁:每次操作锁住对应的行数据
+
+### 2. 全局锁
+
+#### （1）介绍
+
+全局锁就是对整个数据库实例加锁，加锁后整个实例就处于只读状态，**后续的DML的写语句，DDL语句，已经更新操作的事务提交语句都将被阻塞**。其典型的使用场景是做全库的逻辑备份，对所有的表进行锁定，从而获取一致性视图，保证数据的完整性。
+
+#### （2）加锁指令
+
+```sql
+flush tables with read lock;  # 加锁
+unlock；# 解锁
+```
+
+### 3. 表级锁
+
+#### （1）介绍
+
+表级锁，每次操作锁住整张表，锁定粒度大，发生锁冲突的概率最高，并发度最低。表级锁，主要分为以下三类：
+
+- 表锁
+- 元数据锁（meta data lock）
+- 意向锁
+
+#### （2）表锁
+
+对于表锁，分为两类:
+
+- 表共享读锁(read lock)，也称之为读锁，不会阻塞其他客户端的读，会阻塞其他客户端的写，语法：
+
+```sql
+# 加锁
+lock tables 表名... read;
+# 释放锁
+unlock tables;
+```
+
+从下图可以看到，加了读锁后，所有的客户端都无法写。
+
+![image-20250618201324504](./assets/image-20250618201324504.png)
+
+客户端1：
+
+```sql
+# 步骤1: 加锁
+lock tables user read;
+# 步骤2: 正常执行
+select * from user;
+# 步骤3: 报错: [HY000l[1099] Table 'user' was locked with a READ lock and can't be updated
+update user set email="haojie@gmail.com" where id=1;
+# 步骤6: 解锁
+unlock tables;
+```
+
+客户端2：
+
+```sql
+# 步骤4: 正常执行
+select * from user;
+# 步骤5: 阻塞, 一直到步骤6执行
+update user set email="haojie@gmail.com" where id=1;
+```
+
+- 表独占写锁(write lock)，也称之为写锁，会阻塞其他客户端的读，也会阻塞其他客户端的写，语法：
+
+```sql
+# 加锁
+lock tables 表名... write;
+# 释放锁
+unlock tables
+```
+
+从下图可以看到，加了写锁后，当前客户端可以读可以写，其他客户端不能读不能写
+
+![image-20250618202657261](./assets/image-20250618202657261.png)
+
+客户端1:
+
+```sql
+# 步骤1: 加锁
+lock tables user write;
+# 步骤2: 正常执行
+select * from user;
+# 步骤3: 正常执行
+update user set email="haojie@qq.com" where id=1;
+# 步骤6: 解锁
+unlock tables;
+```
+
+客户端2：
+
+```sql
+# 步骤4: 阻塞, 一直到步骤6执行
+select * from user;
+# 步骤5: 阻塞, 一直到步骤6执行
+update user set email="haojie@qq.com" where id=1;
+```
+
+#### （3）元数据锁
+
+元数据锁（meta data lock，MDL）加锁过程是系统自动控制，无需显式使用，在访问一张表的时候会自动加上。MDL锁主要作用是维护表元数据的数据一致性，在表上有活动事务的时候，不可以对元数据进行写入操作。
+
+下表是不同的sql语句对应的MDL锁类型，这里
+
+- SHARED_READ：MDL读锁，对一张表进行读操作的时候，加的是MDL读锁，和MDL写锁兼容
+- SHARED_WRITE：MDL写锁，对一张表进行增、删、改操作的时候，加的是MDL写锁，和MDL读锁兼容
+- EXCLUSIVE：排他锁，对表结构进行更新的时候，加的是排他锁，和MDL读锁、MDL写锁都互斥
+
+![image-20250618211136232](./assets/image-20250618211136232.png)
+
+客户端1：
+
+```sql
+# 步骤1: 开启事务
+begin;
+# 步骤2: 正常执行
+select * from user;
+# 步骤8: 提交事务
+commit;
+```
+
+客户端2：
+
+```sql
+# 步骤3: 开启事务
+begin;
+# 步骤4: 正常执行
+select * from user;
+# 步骤5: 正常执行
+update user set email="haojie@qq.com" where id=1;
+# 步骤6: 提交事务
+commit;
+# 步骤7: 新增字段, 阻塞, 一直到步骤8执行
+alter table user add column sex int;
+```
+
+可以在mysql 内置的`performance_schema`库的`metadata_locks`表查看MDL锁的情况
+
+#### （4）意向锁
+
+为了避免加的行锁与表锁的冲突，在InnoDB中引入了意向锁，使得表锁不用检查每行数据是否加锁，使用意向锁来减少表锁的检查。
+
+![image-20250618214732570](./assets/image-20250618214732570.png)
+
+如上图所示，客户端1对id=3的数据加了行锁，客户端2在加表锁前，需要逐行检查，效率很低，意向锁就是为了解决这个问题的 。意向锁分为两种：
+
+- 意向共享锁（IS）：加锁语句为，`select ... lock in share mode`。与表锁共享锁(read)兼容，与表锁排它锁(write)互斥。
+- 意向排他锁（IX）：由insert、update、delete、select ... for update 添加。与表锁共享锁(read)及排它锁(write)都互斥，意向锁之间不会互斥。
+
+> 注意别搞混，这里说的表锁共享锁和表锁共享锁，指的是（2）里面的锁
+
+可以在mysql 内置的`performance_schema`库的`data_locks`表查看意向锁以及行锁的加锁情况
+
+客户端1:
+
+```sql
+# 步骤1: 开启事务
+begin;
+# 步骤2: 这个语句既会加上行锁, 也会加上意向锁（IS）,可以在performance_schema.data_locks查
+select * from user where id=1 lock in share mode;
+# 步骤5: 提交事务，行锁和意向锁都被释放
+commit;
+```
+
+客户端2:
+
+```sql
+# 步骤3: 加表锁读锁，执行成功，因为IS和表锁读锁兼容
+lock tables score read;
+# 步骤4: 加表锁写锁，阻塞，一直到步骤5执行，因为IS和表锁写锁互斥
+lock tables score write;
+```
+
+### 4. 行级锁
+
+#### （1）介绍
+
+行级锁，每次操作锁住对应的行数据。锁定粒度最小，发生锁冲突的概率最低，并发度最高。应用在InnoDB存储引擎中，InnoDB的数据是基于索引组织的，**行锁是通过对索引上的索引项加锁来实现的，而不是对记录加的锁**。对于行级锁，主要分为以下三类：
+
+- 行锁（Record Lock）：锁定单个行记录的锁，防止其他事务对此行进行update和delete。在RC、RR隔离级别下都支持。
+- 间隙锁（Gap Lock）：锁定索引记录间隙(不含该记录)，确保索引记录间隙不变，防止其他事务在这个间隙进行insert，产生幻读。在RR隔离级别下都支持。
+- 临键锁（Next-Key Lock）：行锁和间隙锁组合，同时锁住数据，**并锁住数据前面的间隙Gap**。在RR隔离级别下支持
+
+#### （2）行锁
+
+InnoDB实现了以下两种类型的行锁：
+
+- 共享锁(S):允许一个事务去读一行，阻止其他事务获得相同数据集的排它锁。
+- 排他锁(X):允许获取排他锁的事务更新数据，阻止其他事务获得相同数据集的共享锁和排他锁。
+
+两种类型的行锁兼容情况如下：
+
+<img src="./assets/image-20250619135539930.png" alt="image-20250619135539930" style="zoom:50%;" />
+
+我们常见的sql语句，它的行锁情况如下：
+
+<img src="./assets/image-20250619135711142.png" alt="image-20250619135711142" style="zoom:80%;" />
+
+> 前面已经说过，可以在mysql 内置的`performance_schema`库的`data_locks`表查看意向锁以及行锁的加锁情况
+
+- case1：共享锁和共享锁
+
+客户端1：
+
+```sql
+# 步骤1: 开启事务
+begin;
+# 步骤2: 加锁，可以通过performance_schema.data_locks查看，加了共享锁（S）
+select * from user where id=1 lock in share mode;
+# 步骤5: 提交事务
+commit;
+```
+
+客户端2：
+
+```sql
+# 步骤3: 开启事务
+begin;
+# 步骤4: 加锁，虽然id一样，但是能正常执行, 因为共享锁和共享锁兼容
+select * from user where id=1 lock in share mode;
+# 步骤6: 提交事务
+commit;
+```
+
+- case2：共享锁和排他锁
+
+客户端1：
+
+```sql
+# 步骤1: 开启事务
+begin;
+# 步骤2: 加锁，可以通过performance_schema.data_locks查看，加了共享锁（S）
+select * from user where id=1 lock in share mode;
+# 步骤6: 提交事务
+commit;
+```
+
+客户端2：
+
+```sql
+# 步骤3: 开启事务
+begin;
+# 步骤4: 更新操作，且id和客户端1不一样：正常执行
+update user set email="yuwen@gmail.com" where id=2;
+# 步骤5: 更新操作，且id和客户端1一样, 阻塞, 直到步骤6. 共享锁和排他锁互斥
+# 需要注意的是, 这里如果客户端1长时间不提交事务, 这里会有报错：[40001][1205] Lock wait timeout exceeded; try restarting transaction
+update user set email="haojie@gmail.com" where id=1;
+# 步骤7: 提交事务
+commit;
+```
+
+- case3：排他锁和排他锁
+
+客户端1：
+
+```sql
+# 步骤1: 开启事务
+begin;
+# 步骤2: 加锁，可以通过performance_schema.data_locks查看，加了共享锁（S）
+update user set email="haojie@gmail.com" where id=1;
+# 步骤5: 提交事务
+commit;
+```
+
+客户端2：
+
+```sql
+# 步骤3: 开启事务
+begin;
+# 步骤4: 正常执行, 因为id不一样
+update user set email="yuwen@gmail.com" where id=2;
+# 步骤6: 提交事务
+commit;
+```
+
+另外需要说明的是，InnoDB的行锁是针对于索引加的锁，不通过索引条件检索数据，那么InnoDB将对表中的所有记录加锁，此时就会升级为表锁。
+
+客户端1：
+
+```sql
+# 步骤1: 开启事务
+begin;
+# 步骤2: update操作，并且没有通过索引检索数据
+update user set email="haojie@gmail.com" where username="haojie";
+# 步骤5: 提交事务
+commit;
+```
+
+客户端2：
+
+```sql
+# 步骤3: 开启事务
+begin;
+# 步骤4: update操作，会阻塞，因为步骤2相当于加了表锁
+update user set email="yuwen@gmail.com" where id=2;
+# 步骤6: 提交事务
+commit;
+```
+
+如果此时创建索引`create index idx_user_username on user(username)`，此时步骤4就不会被阻塞
+
+#### （3）间隙锁和临键锁
+
+默认情况下，InnoDB在 REPEATABLE READ事务隔离级别运行，InnoDB使用next-key锁进行搜索和索引扫描，以防止幻读。下图是我们的数据
+
+![image-20250619222008672](./assets/image-20250619222008672.png)
+
+结论1：索引上的等值查询(唯一索引)，给不存在的记录加锁时，XX锁(并不确定是next-key锁还是行锁?)优化为间隙锁。
+
+客户端1：
+
+```sql
+# 步骤1: 开启事务
+begin;
+# 步骤2: update操作，并且操作的是不存在的记录！此时会有间隙锁，并且间隙锁的范围为8之前的间隙，也就是(2, 8)开区间，见下图
+update user set email="luoan@gmail.com" where id=5;
+# 步骤5: 提交事务
+commit;
+```
+
+![image-20250619220614935](./assets/image-20250619220614935.png)
+
+客户端2：
+
+```sql
+# 步骤3: 开启事务
+begin;
+# 步骤4: 由于步骤2加了间隙锁，并且间隙锁范围为(2,8), 此时会被锁住
+insert into user(id, username, email, password) values(4, "meimei", "meimei@qq.com", "123456");
+# 步骤6: 提交事务
+commit;
+```
+
+结论2：索引上的等值查询(普通索引)，向右遍历时最后一个值不满足查询需求时，next-key lock 退化为间隙锁。
+
+```sql
+# 步骤1: 开启事务
+begin;
+# 步骤2: 查询并加共享锁，此时锁的情况如图所示
+# 第一个33,2，表示的是一个临键锁，把id为2，age为33的这条记录之前的间隙以及这条记录给锁住
+# 第二个2，REC_NOT_GAP, 表示加的是一个行锁
+# 第三个34,1,GAP, 表示的是一个间隙锁，id为1和id为2之间的间隙也会被锁上
+select * from user where age=33 lock in share mode;
+```
+
+![image-20250619222248518](./assets/image-20250619222248518.png)
+
+结论3：索引上的范围查询(唯一索引)，会访问到不满足条件的第一个值为止。
+
+```sql
+# 步骤1: 开启事务
+begin;
+# 步骤2: 查询并加共享锁，此时锁的情况如图所示
+select * from user where id>=33 lock in share mode;
+```
+
+![image-20250619225440576](./assets/image-20250619225440576.png)
+
+> 这里结论2和结论3都没搞明白
 
 ## 五、日志
 
