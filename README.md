@@ -1,4 +1,635 @@
-## 一、事务
+## 一、MySQL概述
+
+### 1. 相关概念
+
+- 数据库：存储数据的仓库，数据是有组织的进行存储
+- 数据库管理系统：操纵和管理数据库的大型软件
+- SQL：操作关系型数据库的编程语言，定义了一套操作关系型数据库统一标准
+
+### 2. MySQL安装及启动
+
+MySQL的安装参考官网，https://dev.mysql.com/doc/refman/8.4/en/macos-installation-pkg.html
+
+MySQL服务安装好之后，如果想连接mysql，可以使用如下命令来进行连接
+
+```bash
+mysql [-h 127.0.0.1] [-P 3306] -uroot -p
+```
+
+### 3. 数据模型
+
+下图右侧是MySQL服务器，左侧是客户端
+
+![image-20250702205328933](./assets/image-20250702205328933.png)
+
+在数据库服务器中有个软件，称之为DBMS，它会创建、维护和操作多个数据库，而一个数据库里由可以维护多张表，而我们的数据是存储在表结构当中的。
+
+## 二、SQL
+
+### 1. SQL通用语法
+
+- SQL语句可以单行或多行书写，以分号结尾。
+- SQL语句可以使用空格/缩进来增强语句的可读性。
+- MySQL数据库的SQL语句不区分大小写，关键字建议使用大写。
+- 注释:
+  - 单行注释：-- 注释内容 或 # 注释内容(MySQL特有)
+  - 多行注释：/*注释内容 */
+
+### 2. SQL分类
+
+SQL可以分为四大类
+
+- DDL：Data Definition Language，数据定义语言，用来定义数据库对象(数据库，表，字段)
+- DML：Data Manipulation Language，数据操作语言，用来对数据库表中的数据进行增、删、改
+- DQL：Data Query Language，数据查询语言，用来查询数据库中表的记录
+- DCL：Data Control Language，数据控制语言，用来创建数据库用户、控制数据库的访问权限
+
+### 3. DDL
+
+#### （1）数据库操作
+
+- 查询
+  - 查询所有数据库：`SHOW DATABASES;`
+  - 查询当前数据库：`SELECT DATABASE();`注意这个括号里不要填任何东西。
+- 创建：`CREATE DATABASE [IF NOT EXISTS] 数据库名 [DEFAULT CHARSET 字符集] [COLLATE 排序规则]; `这里建议使用字符集为utf8mb4，可以存储的字符长度比较长。
+- 删除：`DROP DATABASE [IF EXISTS] 数据库名;`
+- 使用：`USE 数据库名;`
+
+#### （2）表操作
+
+##### i. 查询
+
+- 查询当前数据库所有表： `SHOW TABLES;`
+- 查询表结构：`DESC 表名;`
+- 查询指定表的建表语句：`SHOW CREATE TABLE 表名;`
+
+##### ii. 创建
+
+```sql
+CREATE TABLE 表名(
+	字段1 字段1类型 [COMMENT 字段1注释],
+  字段2 字段2类型 [COMMENT 字段2注释],
+	字段3 字段3类型 [COMMENT 字段3注释],
+	字段n 字段n类型 [COMMENT 字段n注释]
+)[COMMENT 表注释];
+```
+
+数据类型：
+
+1. 数值类型：
+
+![image-20250702212902495](./assets/image-20250702212902495.png)
+
+- 对于无符号和有符号的使用，在定义的时候可以加上关键字，例如`age TINYINT UNSIGNED`
+- 使用小数的方法：`score double(4,1)`，其中4代表的是整体长度，1代表的是小数点位数
+
+2. 字符串类型：
+
+<img src="./assets/image-20250702213428688.png" alt="image-20250702213428688" style="zoom: 60%;" />
+
+- char和varchar：char是定长，varchar是变长。varchar性能相对较差，因为长度不确定。
+
+3. 日期时间类型：
+
+<img src="./assets/image-20250702214026615.png" alt="image-20250702214026615" style="zoom:67%;" />
+
+例子：设计一张员工信息表，要求如下:
+
+- 编号(纯数字)
+- 员工工号(字符串类型，长度不超过10位)
+- 员工姓名(字符串类型，长度不超过10位) 
+- 性别(男/女，存储一个汉字)
+- 年龄(正常人年龄，不可能存储负数)
+- 身份证号(二代身份证号均为18位，身份证中有X这样的字符)
+- 入职时间(取值年月日即可)
+
+```sql
+create table emp(
+  id int comment '编号',
+  workno varchar(10) comment '工号', 
+  name varchar(10) comment '姓名',
+  gender char(1) comment '性别',
+  age tinyint unsigned comment '年龄',
+  idcard char(18) comment '身份证',
+  entrydate date comment '入职时间')
+  comment '员工表';
+```
+
+##### iii. 修改
+
+- 添加字段：`ALTER TABLE 表名 ADD 字段名 类型(长度)[COMMENT 注释][约束];`
+- 修改字段：
+  - 修改数据类型：`ALTER TABLE 表名 MODIFY 字段名 新数据类型(长度);`
+  - 修改字段名和字段类型：`ALTER TABLE 表名 CHANGE 旧字段名 新字段名 类型(长度) [COMMENT 注释][约束];`
+- 删除字段：`ALTER TABLE 表名 DROP 字段名;`
+- 修改表名：`ALTER TABLE 表名 RENAME TO 新表名;`
+
+例子：将emp表的nickname字段修改为username，类型为varchar(30)
+
+```sql
+alter table emp change nickname username varchar(30) comment 用户名;
+```
+
+##### iv. 删除
+
+- 删除表：`DROP TABLE [IF EXISTS] 表名;`
+- 删除指定表，并重新创建该表：`TRUNCATE TABLE 表名;`
+
+### 4. DML
+
+#### （1）添加数据
+
+- 给**指定**字段添加数据：`INSERT INTO 表名(字段名1,字段名2,…) VALUES(值1,值2,…);`
+
+```sql
+insert into emp(id, workno, name, gender, age, idcard, entrydate) values (1, '1', 'haojie', 'M', 33, "4211211", "2000-01-01")
+```
+
+> 为什么可以给指定字段添加数据，而不用全部呢？
+>
+> 1. 如果表的某些字段定义了默认值，这部分字段值可以不提供
+> 2. 如果某些字段可以为 NULL，这部分字段值可以不提供
+
+- 给**全部**字段添加数据：`INSERT INTO 表名 VALUES (值1,值2, ..);`
+
+```sql
+insert into emp values (2, '2', 'yuwen', 'F', 32, "4221211", "2001-01-01")
+```
+
+- 批量添加数据：
+  	- `INSERT INTO 表名(字段名1,字段名2,..) VALUES(值1,值2,..),(值1,值2,.),(值1,值2,.);`
+  	- `INSERT INTO 表名 VALUES (值1,值2,…..),(值1,值2,….),(值1,值2,.);`
+
+```sql
+insert into emp values (4, '4', 'jiajia', 'F', 53, "4231211", "1972-01-01"), (3, '3', 'luoan', 'F', 1, "110105", "2024-01-01")
+```
+
+#### （2）修改数据
+
+- 基本语法：`UPDATE 表名 SET 字段名1=值1,字段名2=值2,…[WHERE 条件];`
+
+注意：where条件可以不要，如果不要代表的是修改整张表的所有数据
+
+```sql
+# 修改一个字段
+update emp set name="shuhaojie" where id=1
+# 修改两个字段
+update emp set name="zengyuwen", entrydate="2022-01-01" where id=2
+# 修改整张表所有数据
+update emp set entrydate="2025-02-01"
+```
+
+#### （3）删除数据
+
+- 基本语法：`DELETE FROM 表名[WHERE 条件]`
+
+注意：
+
+- DELETE语句的条件可以有，也可以没有，如果没有条件，则会删除整张表的所有数据
+- DELETE 语句不能删除某一个字段的值(可以使用UPDATE)
+
+```sql
+delete from emp where id=4
+```
+
+### 5. DQL
+
+#### （1）引言
+
+在一个正常的业务系统中，查询数据的操作是远高于添加数据、修改数据、删除数据的。例如在京东官网中，我们可以做如下操作：
+
+<img src="./assets/image-20250707210147234.png" alt="image-20250707210147234" style="zoom:67%;" />
+
+- 在输入框里输入关键字，进行搜索，例如【笔记本】
+- 按照品牌进行查询，例如【宏基acer】
+- 按照价格进行范围查询，例如【3000-4000】
+- 查询出来的数据有很多，可以点击分页条，进行分页展示
+- 还可以对查出来的数据，进行排序，例如按照价格进行降序排序
+
+#### （2）语法
+
+查询的基本语法如下：
+
+```sql
+SELECT
+		字段列表
+FROM
+		表名列表
+WHERE
+		条件列表
+GROUP BY
+		分组字段列表
+HAVING
+		分组后条件列表
+ORDER BY
+		排序字段列表
+LIMIT
+		分页参数
+```
+
+#### （3）基本查询
+
+##### i. 基本语法
+
+1. 查询多个字段
+
+- `SELECT 字段1,字段2,字段3... FROM 表名`
+- `SELECT * FROM 表名`
+
+2. 设置别名：`SELECT 字段1 [AS 别名1],字段2 [AS 别名2]…FROM 表名;`
+3. 去除重复记录：`SELECT DISTINCT 字段列表 FROM 表名;`
+
+##### ii. 数据准备
+
+建表：
+
+```sql
+create table emp(
+  	id int,
+		workno varchar(10),
+		name varchar(10),
+		gender char,
+		age tinyint unsigned ,
+		idcard char(18),
+		workaddress varchar(50),
+		entrydatedate date)
+```
+
+插入数据：
+
+```sql
+INSERT INTO emp (id, workno, name, gender, age, idcard, workaddress, entrydate) VALUES
+(1, 'E0001', '张无忌', '男', 26, '110101199805010011', '明教光明顶', '2020-01-15'),
+(2, 'E0002', '赵敏', '女', 24, '110101199905230012', '汝阳王府', '2021-03-10'),
+(3, 'E0003', '周芷若', '女', 23, '110101200006180013', '峨眉山', '2022-05-20'),
+(4, 'E0004', '谢逊', '男', 50, '110101197301300014', '冰火岛', '2019-08-05'),
+(5, 'E0005', '杨逍', '男', 42, '110101198102140015', '明教光明顶', '2018-12-01'),
+(6, 'E0006', '小昭', '女', 22, '110101200202180016', '波斯总教', '2021-07-13'),
+(7, 'E0007', '殷素素', '女', 38, '110101198603150017', '明教', '2017-11-30'),
+(8, 'E0008', '宋青书', '男', 28, '110101199605180018', '武当山', '2020-04-22'),
+(9, 'E0009', '灭绝师太', '女', 55, '110101196701100019', '峨眉山', '2015-09-17'),
+(10, 'E0010', '纪晓芙', '女', 30, '110101199309050020', '峨眉山', '2020-06-01'),
+(11, 'E0011', '杨不悔', '女', 25, '110101199804120021', '光明顶', '2021-08-19'),
+(12, 'E0012', '韦一笑', '男', 46, '110101197703260022', '明教光明顶', '2016-10-03'),
+(13, 'E0013', '张三丰', '男', 90, '110101193301010023', '武当山', '2010-05-25'),
+(14, 'E0014', '殷天正', '男', 70, '110101195309210024', '明教', '2012-12-12'),
+(15, 'E0015', '范遥', '男', 48, '110101197501180025', '明教西域分舵', '2018-03-14'),
+(16, 'E0016', '紫衫龙王', '女', 40, '110101198309220026', '灵蛇岛', '2017-06-30'),
+(17, 'E0017', '金花婆婆', '女', 60, '110101196211110027', '灵蛇岛', '2014-02-07'),
+(18, 'E0018', '彭莹玉', '男', 52, '110101197102050028', '明教西域分舵', '2015-10-10'),
+(19, 'E0019', '庄铮', '男', 45, '110101197808080029', '明教光明顶', '2019-04-04'),
+(20, 'E0020', '黄衫女子', '女', 21, '110101200305160030', '古墓派', '2023-01-01');
+```
+
+##### iii. 查询示例
+
+- 查询指定字段 name，workno，age返回
+
+  ```sql
+  select name,workno,age from emp;
+
+- 查询所有字段返回
+
+  ```sql
+  select * from emp;
+  ```
+
+- 查询所有员工的工作地址，起别名
+
+  ```sql
+  select workaddress as '工作地址' from emp;
+  ```
+
+- 查询公司员工的上班地址（不要重复）
+
+  ```sql
+  select distinct workaddress '工作地址' from emp;
+  ```
+
+#### （4）条件查询
+
+##### i. 基本语法
+
+`SELECT 字段列表 FROM 表名 WHERE 条件列表;`
+
+##### ii. 查询条件
+
+**（1）比较运算符**
+
+- `>`：大于
+- `>=`：大于等于
+- `<`：小于
+- `<=`：小于等于
+- `=`：等于
+- `!=`或者`<>`：不等于
+- `BETWEEN ... AND...`：某个范围内，包含最大值、最小值
+- `IN(...)`：在in之后的列表中的值，多选一
+- `LIKE 占位符`：模糊匹配，`_`匹配单个字符，`%`匹配任意个字符
+- `IS NULL`：为NULL
+
+**（2）逻辑运算符**
+
+- `AND或&&`：并且
+- `OR或||`：或者
+- `NOT或！`：不是
+
+##### iii. 查询示例
+
+- 查询年龄等于88的员工
+
+  ```sql
+  select * from emp where age=88;
+  ```
+
+- 查询年龄小于20的员工信息
+
+  ```sql
+  select * from emp where age<20;
+  ```
+
+- 查询年龄小于等于 20的员工信息
+
+  ```sql
+  select * from emp where age <= 20;
+  ```
+
+- 查询没有身份证号的员工信息
+
+  ```sql
+  select * from emp where idcard is null;
+  ```
+
+- 查询有身份证号的员工信息
+
+  ```sql
+  select * from emp where idcard is not null;
+  ```
+
+- 查询年龄不等于 88 的员工信息
+
+  ```sql
+  select * from emp where age != 88;
+  select * from emp where age <> 88;
+  ```
+
+- 查询年龄在15岁(包含)到20岁(包含)之间的员工信息
+
+  ```sql
+  select * from emp where age >= 15 && age <= 20;
+  select * from emp where age >= 15 and age <= 20;
+  select * from emp where age betweeh 15 and 20;
+  ```
+
+- 查询性别为女且年龄小于 25岁的员工信息
+
+  ```sql
+  select * from emp where gender='女'and age < 25;
+  ```
+
+- 查询年龄等于18或20或40的员工信息
+
+  ```sql
+  select * from emp where age =18 or age = 20 or age =40;
+  select * from emp where age in(18,20,40);
+  ```
+
+- **查询姓名为两个字的员工信息**
+
+  ```sql
+  select * from emp where name like '__';
+  ```
+
+- 查询身份证号最后一位是X的员工信息
+
+  ```sql
+  select * from emp where idcard like '%X';
+  # 因为身份证号是17位，前面16位可以用16个_来表示
+  select * from emp where idcard like '________________X'; 
+  ```
+
+#### （5）聚合函数
+
+##### i. 基本概念
+
+聚合函数是将**一列数据作为一个整体**，进行纵向计算。
+
+- count：统计数量
+- max：最大值
+- min：最小值
+- avg：平均值
+- sum：求和
+
+注意：
+
+（1）聚合函数都是作用于表的某一列。
+
+（2）所有null值不参与聚合函数的计算 
+
+##### ii. 基本语法
+
+`SELECT 聚合函数(字段列表) FROM 表名;`
+
+##### iii. 查询示例
+
+- 统计该企业员工数量
+
+  ```sql
+  select count(*) from emp;
+  # 注意，如果身份证号有为空的，此时统计的总数要去掉身份证号为空的
+  select count(idcard) from emp;
+  ```
+
+- 统计该企业员工的平均年龄
+
+  ```sql
+  select avg(age) from emp;
+  ```
+
+- 统计该企业员工的最大年龄
+
+  ```sql
+  select max(age) from emp;
+  ```
+
+- 统计该企业员工的最小年龄
+
+  ```sql
+  select min(age) from emp;
+  ```
+
+- 统计西安地区员工的年龄之和
+
+  ```sql
+  select sum(age) from emp where workaddress='西安';
+  ```
+
+#### （6）分组查询
+
+##### i. 基本语法
+
+```sql
+SELECT 字段列表 FROM 表名 [WHERE 条件] GROUP BY 分组字段名 [HAVING 分组后过滤条件];
+```
+
+`where`与`having`区别：
+
+- 执行时机不同：where是分组之前进行过滤，不满足where条件，不参与分组;而having是分组之后对结果进行过滤。
+- 判断条件不同：where不能对聚合函数进行判断，而having可以。
+
+注意：
+
+（1）分组通常伴随着聚合来一起操作
+
+（2）执行顺序：where > 聚合函数 > having
+
+（3）分组之后，查询的字段一般为聚合函数和分组字段，查询其他字段无任何意义。
+
+##### ii. 查询示例
+
+- 根据性别分组，统计男性员工和女性员工的数量
+
+  ```sql
+  select gender, count(*) from emp group by gender;
+  ```
+
+- 根据性别分组，统计男性员工和女性员工的平均年龄
+
+  ```sql
+  select gender, avg(age) from emp group by gender; 
+  ```
+
+- **查询年龄小于45的员工，并根据工作地址分组，获取员工数量大于等于3的工作地址**
+
+  ```sql
+  select workaddress, count(*) as address_count from emp where age < 45 group by workaddress having address_count >= 3;
+  ```
+
+#### （7）排序查询
+
+##### i. 基本语法
+
+```sql
+SELECT 字段列表 FROM 表名 ORDER BY 字段1 排序方式1,字段2 排序方式2;
+```
+
+##### ii. 查询示例
+
+- 根据年龄对公司的员工进行升序排序
+
+  ```sql
+  select * from emp order by age asc;
+  ```
+
+- 根据年龄对公司的员工进行升序排序，年龄相同，再按照入职时间进行降序排序
+
+  ```sql
+  select * from emp order by age asc, entrydate desc;
+  ```
+
+#### （8）分页查询
+
+##### i. 基本概述
+
+在进行分页的时候，我们需要用到分页查询，例如下图所示
+
+![image-20250709224050325](./assets/image-20250709224050325.png)
+
+##### ii. 基本语法
+
+```sql
+SELECT 字段列表 FROM 表名 LIMIT, 起始索引, 查询记录数;
+```
+
+注意：
+
+（1）起始索引从0开始，起始索引=(查询页码-1)*每页显示记录数
+
+（2）分页查询是数据库的方言，不同的数据库有不同的实现，MySQL中是LIMIT
+
+（3）如果查询的是第一页数据，起始索引可以省略，直接简写为limit 10
+
+##### iii. 查询示例
+
+- 查询第1页员工数据，每页展示10条记录
+
+  ```sql
+  select * from emp limit 0,10;
+  ```
+
+- 查询第2页员工数据，每页展示10条记录
+
+  ```sql
+  # 注意上面说的公式：起始索引=(查询页码-1)*每页显示记录数，(2-1)*10;
+  select * from emp limit 10,10;
+  ```
+
+#### （9）DQL执行顺序
+
+##### i. 执行顺序
+
+在前面介绍过DQL语句的编写顺序，但是它和DQL语句的编写顺序并不相同
+
+<img src="./assets/image-20250709225022793.png" alt="image-20250709225022793" style="zoom: 50%;" />
+
+##### ii. 验证
+
+1. 先做一个基础的查询：查询年龄大于15的员工的姓名、年龄，并根据年龄进行升序排序：
+
+```sql
+select name, age from emp where age > 15 order by age asc;
+```
+
+2. 上面说了执行顺序是从`from 表名列表开始`，那么我们可以对表名取个别名：
+
+```sql
+select name, age from emp as e where age > 15 order by age asc;
+```
+
+此时，执行这句话正常不报错
+
+3. 接着执行的是`where 条件列表`，我们可以使用上面的别名
+
+```sql
+select name, age from emp as e where e.age > 15 order by age asc;
+```
+
+此时，执行这句话正常不报错
+
+4. 接着执行的是`GROUP BY`和`HAVING`, 这里没有就不讨论
+
+5. 再就是SELECT，这里可以使用前面的别名
+
+```sql
+select e.name, e.age from emp as e where e.age > 15 order by age asc;
+```
+
+此时，执行这句话正常不报错
+
+6. 这里我们还可以验证一下`SELECT`和`WHERE`的顺序，方法是给`SELECT`起别名
+
+```sql
+select e.name as ename, e.age as eage from emp as e where eage > 15 order by age asc;
+```
+
+此时，**执行这句话报错**，因为where的执行顺序高于select
+
+7. 但是，我们在order by里使用select里的别名，就不报错
+
+```sql
+select e.name as ename, e.age as eage from emp as e where e.age > 15 order by eage asc;
+```
+
+这就说明，select的执行顺序先于order by
+
+### 6. DCL
+
+## 三、函数
+
+## 四、约束
+
+## 五、多表查询
+
+## 六、事务
 
 ### 1. 什么是事务
 
@@ -315,7 +946,7 @@ MySQL的默认隔离级别是可重复读
 - 锁冲突的概率大大增加，可能导致大量事务等待，**性能最低**。
 - **使用场景：** 对数据一致性要求**极其严格**，可以接受显著性能下降的场景。例如，某些金融核心交易、票务系统最后的库存扣减等。一般只在非常必要的情况下使用。
 
-## 二、索引
+## 七、索引
 
 > 参考https://www.bilibili.com/video/BV1Kr4y1i7ru?spm_id_from=333.788.videopod.episodes&vd_source=e204e7b48214ba273c6eb797fd8b7a51&p=68
 
@@ -573,7 +1204,7 @@ SQL提示，就是在SQL语句中加入一些人为的提示来达到优化操�
 - 尽量使用联合索引，减少单列索引，查询时，联合索引很多时候可以覆盖索引，节省存储空间，避免回表，提高查询效率。例如 `WHERE col1 = 'A' AND col2 = 'B'`这个查询，如果只有 `col1` 和 `col2` 的单列索引，数据库优化器通常只能选择其中一个它认为过滤性更好的索引（比如 `col1`）。它会先通过 `col1` 的索引找到所有 `col1='A'` 的行，然后**回表**（回到主表数据页）去逐行检查这些行是否满足 `col2='B'`。如果 `col1='A'` 的行很多，这个过程会产生大量的随机 I/O。
 - 如果是字符串类型的字段，例如一篇文章的内容，字段的长度较长，可以针对于字段的特点，建立前缀索引。
 
-## 三、SQL查询优化
+## 八、SQL查询优化
 
 ### 1. explain执行计划
 
@@ -889,7 +1520,7 @@ commit; # 步骤6
 
 对name建索引：`create index idx_course_name on course(name);`，再次尝试case2，步骤4可以正常执行，因为name是索引。
 
-## 四、锁
+## 九、锁
 
 ### 1. 概述
 
@@ -1342,7 +1973,7 @@ commit;
    - 对精确存在的`id=2`使用**记录锁**（更高效）
    - 对范围部分`id>2`使用**临键锁**（防幻读）
 
-## 五、MVCC
+## 十、MVCC
 
 ### 1. 介绍
 
