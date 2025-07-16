@@ -623,9 +623,467 @@ select e.name as ename, e.age as eage from emp as e where e.age > 15 order by ea
 
 ### 6. DCL
 
+#### （1）介绍
+
+DCL英文全称是Data Control Lanauage(数据控制语言)，用来管理数据库用户 、控制数据库的访问权限。
+
+- 控制数据库有哪些用户可以访问
+- 控制每个用户有什么样的访问权限
+
+<img src="./assets/image-20250710212155113.png" alt="image-20250710212155113" style="zoom:50%;" />
+
+#### （2）用户管理
+
+##### i. 查询用户
+
+用户信息都是存在系统数据库`mysql`的`user`表中的
+
+```sql
+use mysql;
+select * from user;
+```
+
+在mysql中，默认创建了以下四个用户，这里我们常用的是root。此外，在mysql中，使用Host和User才能完整的定位一个用户，这里的Host指的是当前用户在哪一个主机上访问当前mysql服务器，localhost代表只能在本地访问，不能在远程访问。
+
+![image-20250710212839699](./assets/image-20250710212839699.png)
+
+##### ii. 创建用户
+
+基本语法：`CREATE USER '用户名'@'主机名’ IDENTIFIED BY '密码';`
+
+- 例子1：创建一个用户haojie，只能在本地访问
+
+```sql
+CREATE USER 'haojie'@'localhost' IDENTIFIED BY 'haojie';
+```
+
+- 例子2：创建一个用户yuwen，可以在所有主机访问
+
+```sql
+CREATE USER 'yuwen'@'%' IDENTIFIED BY 'yuwen';
+```
+
+##### iii. 修改用户密码
+
+基本语法：`ALTER USER '用户名'@'主机名’ IDENTIFIED WITH mysql_native_password BY '新密码';`
+
+- 例子：修改haojie用户，密码改为123456
+
+```sql
+ALTER USER 'haojie'@'localhost' IDENTIFIED WITH mysql_native_password BY '123456';
+```
+
+##### iv. 删除用户
+
+基本语法：`drop user '用户名'@‘主机名’`
+
+- 例子：删除haojie用户
+
+```sql
+drop user 'haojie'@'localhost';
+```
+
+#### （3）权限控制
+
+##### i. 权限类型
+
+MySQL定义了多张权限，但是常用的就以下几种
+
+- ALL, ALL PRIVILEGES：所有权限
+- SELECT：查询数据
+- INSERT：插入数据
+- UPDATE：修改数据
+- DELETE：删除数据
+- ALTER：修改表
+- DROP：删除数据库/表/视图
+- CREATE：创建数据库/表
+
+##### ii. 权限控制
+
+- 查询权限：`SHOW GRANTS FOR '用户名'@'主机名';`
+
+例子：查询yuwen用户的权限
+
+```sql
+SHOW GRANTS FOR 'yuwen'@'%';
+# 查询结果: GRANT USAGE ON *.* TO `yuwen`@`%`, 表示仅仅可以连接，没其他的权限
+```
+
+- 授予权限：`GRANT 权限列表 ON 数据库名.表名 TO '用户名'@'主机名';`
+
+例子：给yuwen用户授予mysql_basic库的emp表，可读权限
+
+```sql
+GRANT SELECT ON mysql_basic.emp TO 'yuwen'@'%';
+```
+
+授予完权限后，可以使用命令行来做验证，我们想做一个删除操作，发现被禁止
+
+<img src="./assets/image-20250710215906451.png" alt="image-20250710215906451" style="zoom: 50%;" />
+
+- 撤销权限：`REVOKE 权限列表 ON 数据库名.表名 FROM '用户名'@'主机名';`
+
+例子：撤销yuwen用户的mysql_basic库的emp表的可读权限
+
+```sql
+REVOKE SELECT ON mysql_basic.emp FROM 'yuwen'@'%';
+```
+
 ## 三、函数
 
+### 1. 概述
+
+函数 是指一段可以直接被另一段程序调用的程序或代码。借助函数，我们可以解决如下问题：
+
+- 数据库表中，存储的是入职日期，如 2000-11-12，如何快速计算入职天数???
+- 数据库表中，存储的是学生的分数值，如98、75，如何快速判定分数的等级呢，例如优秀、良好???
+
+### 2. 字符串函数
+
+#### （1）函数汇总
+
+常见的字符串函数如下：
+
+- `CONCAT(S1,S2,...Sn)`：字符串拼接，将S1，S2，..Sn拼接成一个字符串
+- `LOWER(str)`：将字符串str全部转为小写
+- `UPPER(str)`：将字符串str全部转为大写
+- `LPAD(str,n,pad)`：左填充，用字符串pad对str的左边进行填充，达到n个字符串长度
+- `RPAD(str,n,pad)`：右填充，用字符串pad对str的右边进行填充，达到n个字符串长度
+- `TRIM(str)`：去掉字符串头部和尾部的空格
+- `SUBSTRING(str,start,len)`：返回从字符串str从start位置起的len个长度的字符串
+
+#### （2）使用示例
+
+```sql
+# 字符串拼接, 结果为Hello MySQL
+select concat('Hello',' MySQL');
+# 转成小写，结果为hello
+select lower('Hello');
+# 转大写，结果为HELLO
+select upper('Hello');
+# 左填充，结果为___01
+select lpad('01',5,'_');
+# 右填充，结果为01___
+select rpad('01',5,'_');
+# 去掉空格, 注意下面执行完后是Hello MySQL，中间的空格还在
+select trim(' Hello MySQL ');
+# 截取子字符串, 第一个字符串开始截取, 截取后面5个，得到的是Hello
+select substring('Hello MySOL',1,5);
+```
+
+#### （3）实战案例
+
+由于业务需求变更，企业员工的工号，统一为5位数，目前不足5位数的全部在前面补0。比如: 1号员工的工号应该为00001。
+
+```sql
+update emp set workno = lpad(workno,5,'0');
+```
+
+### 3. 数值函数
+
+#### （1）函数汇总
+
+常见的数值函数如下：
+
+- `CEIL(x)`：向上取整
+- `FLOOR(x)`：向下取整
+- `MOD(x,y)`：返回x/y的模
+- `RAND()`：返回0~1内的随机数
+- `ROUND(x,y)`：求参数x的四舍五入的值，保留y位小数
+
+#### （2）使用示例
+
+``` sql
+# 向上取整, 结果为2
+select ceil(1.5);
+# 向下取整, 结果为1
+select floor(1.9);
+# 取模，结果为3
+select mod(3, 4);
+# 取随机数，每次结果都不一样
+select rand();
+# 四舍五入，结果为2.35
+select round(2.345, 2);
+```
+
+#### （3）实战案例
+
+通过数据库的函数，生成一个六位数的随机验证码：
+
+- 随机数，首先想到的是用rand，然后再去乘一个数，由于是六位数，因此要乘1000000，注意不是100000
+- 六位数，因此要取掉小数部分，因此用round函数，并且小数位是0。这里注意写法：round(rand()*1000000, 0)，不要写两次select
+- 这里还会有一个bug，如果小数是0.023456，得到的是23456，因此要做补零操作
+
+```sql
+select lpad(round(rand()*1000000, 0), 6, '0');
+```
+
+### 4. 日期函数
+
+#### （1）函数汇总
+
+常见的日期函数如下：
+
+- `CURDATE()`：返回当前日期
+- `CURTIME()`：返回当前时间
+- `NOW()`：返回当前日期和时间
+- `YEAR(date)`：获取指定date的年份
+- `MONTH(date)`：获取指定date的月份
+- `DAY(date)`：获取指定date的日期
+- `DATE_ADD(date, INTERVAL expr type)`：返回一个日期/时间值，加上一个时间间隔expr后的时间值
+- `DATEDIFF(date1,date2)`：返回起始时间date1和 结束时间date2之间的天数
+
+#### （2）使用示例
+
+```sql
+# 获取当前日期, 2025-07-11
+select curdate();
+# 获取当前时间，17:22:38
+select curtime();
+# 获取当前日期和时间，2025-07-11 17:22:52
+select now();
+# 获取年份，2025
+select year(now());
+# 获取月份，7
+select month(now());
+# 获取日期，11
+select day(now());
+# 获取当前时间往后推70天的，2025-09-19 21:36:52
+select date_add(NOW(),INTERVAL 70 DAY);
+# 获取当前日期和某个日期的差值，517
+select datediff("2025-07-11", "2024-02-10")
+```
+
+#### （3）实战案例
+
+案例:查询所有员工的入职天数，并根据入职天数倒序排序
+
+```sql
+select name, datediff(curdate(), entrydate) as diff from emp order by diff desc
+```
+
+### 5. 流程函数
+
+#### （1）函数汇总
+
+流程函数也是很常用的一类函数，可以在SQL语句中实现条件筛选，从而提高语句的效率。
+
+- `IF(value, t, f)`：如果value为true，则返回t，否则返回f
+- `IFNULL(value1, value2)`：如果value1不为空，返回value1，否则返回value2
+- `CASE WHEN [val1] THEN [res1].. ELSE [default] END`：如果val1为true，返回res1，....否则返回default默认值
+- `CASE [expr] WHEN [val1] THEN [res1]... ELSE [default] END`：如果expr的值等于val1，返回res1，….否则返回default默认值
+
+#### （2）使用示例
+
+```sql
+# if 语句，输出ERROR
+select if(false, "OK", "ERROR")
+# ifnull 语句，输出OK
+select ifnull("OK", "ERROR")
+# ifnull语句，注意输出的是ERROR，因为空字符串不等于null
+select ifnull("", "ERROR")
+# case when then else end
+# 查询emp表的员工姓名和工作地址(如果是峨眉山/武当山---->顶级门派，如果是其他---->非顶级门派)
+select name,
+       (case when workaddress="峨眉山" then "顶级门派" when workaddress="武当山" then "顶级门派" else "非顶级门派" end) as "工作地点"
+from emp;
+```
+
+#### （3）实战案例
+
+统计班级各个学员的成绩，展示的规则如下：>= 85；展示优秀，>=60，展示及格；否则，展示不及格。
+
+数据准备：
+
+```sql
+create table score(
+		id int comment 'ID',
+		name varchar(20) comment'姓名',
+		math int comment'数学',
+		english int comment'英语',
+		chinese int comment'语文'
+)comment'学员成绩表';
+
+insert into score(id, name, math, english, chinese) VALUES (1, 'Tom',67, 88,95 ), (2,'Rose', 23, 66, 98), (3, 'Jack', 56, 98, 76);
+```
+
+具体实现：注意这里>=60，这部分不需要写60<=分数<85，因为前一个case已经把85以上的排掉了
+
+```sql
+select 
+		id,
+    name,
+    (case when math>=85 then "优秀" when math>=65 then "及格" else "不及格" end) as "数学",
+    (case when english>=85 then "优秀" when english>=65 then "及格" else "不及格" end) as "英语",
+    (case when chinese>=85 then "优秀" when chinese>=65 then "及格" else "不及格" end) as "语文"
+from score;
+```
+
 ## 四、约束
+
+### 1. 概述
+
+- 概念：约束是作用于表中字段上的规则，用于限制存储在表中的数据2
+- 目的：保证数据库中数据的正确、有效性和完整性
+- 分类：
+  - 非空约束：`NOT NULL`，限制该字段的数据不能为nul
+  - 唯一约束：`UNIQUE`，保证该字段的所有数据都是唯一、不重复的
+  - 主键约束：`PRIMARY KEY`，主键是一行数据的唯一标识，要求非空且唯一
+  - 默认约束：`DEFAULT`，保存数据时，如果未指定该字段的值，则采用默认值
+  - 描述：`CHECK`，检查约束(8.0.16版本之后)保证字段值满足某一个条件
+  - 外键约束：`FOREIGN KEY`，用来让两张表的数据之间建立连接，保证数据的一致性和完整性
+
+注意：约束是作用于表中字段上的，可以在创建表/修改表的时候添加约束
+
+### 2. 使用示例
+
+根据需求，完成表结构的创建
+
+<img src="./assets/image-20250712203101709.png" alt="image-20250712203101709" style="zoom:67%;" />
+
+建表语句
+
+```sql
+create table constraint_user(
+    id int primary key auto_increment,
+    name varchar(10) not null unique,
+    age int check ( age>0 and age<=120 ),
+    status char(1) default 1,
+    gender char(1)
+)comment '用户表';
+```
+
+- 插入数据：在下面的insert语句中，我们都没有写id值，但是并不会报错，这是因为它有auto_increment，自增这个属性
+
+```sql
+insert into user(name,age,status,gender) values ('Tom1',19,'1','男'),('Tom2',25,'0','男');
+insert into user(name,age,status,gender) values('Tom3',19,'1','男');
+```
+
+- 插入数据：由于name字段不能为null，因此会报错
+
+```sql
+insert into user(name,age,status,gender) values(null,19,'1','男');
+```
+
+- 插入数据：由于name字段唯一，因此会报错
+
+```sql
+insert into user(name,age,status,gender) values('Tom3',19,'1','男');
+```
+
+- 插入数据：由于age字段检查不通过，因此会报错
+
+```sql
+insert into user(name,age,status,gender) values('Tom3',-1,'1','男');
+```
+
+- 插入数据：虽然没有写status值，但是由于该值有默认的，因此也不报错
+
+```sql
+insert into user(name,age,status,gender) values('Tom5',19,'男');
+```
+
+### 3. 外键约束
+
+#### （1）概念
+
+外键用来让两张表的数据之间建立连接，从而保证数据的一致性和完整性。例如下面的emp表和dept表，emp表具有外键字段，用来和dept表建立连接。此外，emp表有外键字段，它是子表，而dept表是父表。
+
+![image-20250712210059586](./assets/image-20250712210059586.png)
+
+#### （2）数据准备
+
+```sql
+# 创建部门表
+create table dept(
+    id int auto_increment comment 'ID' primary key,
+    name varchar(50) not null comment'部门名称'
+)comment'部门表';
+# 插入数据
+INSERT INTO dept(id,name) VALUES(1,'研发部'),(2,'市场部'),(3,'财务部'),(4,'销售部'),(5,'总经办');
+
+# 创建员工表
+create table emp(
+id int auto_increment comment 'ID' primary key,
+name varchar(50)not null comment'姓名',
+age int comment'年龄',
+job varchar(20)comment'职位',
+salary int comment'薪资',
+entrydate date comment'入职时间',
+managerid int comment'直属领导ID',
+dept_id int comment'部门ID')comment '员工表'
+# 插入数据
+INSERT INTo emp (id, name, age, job,salary, entrydate, managerid, dept_id) 
+VALUES(1,'金庸',66,'总裁',20000,'2000-01-01',null,5),
+      (2,'张无忌',20,'项目经理',12500,'2005-12-05',1,1),
+      (3,'杨道',33,'开发',8400,'2000-11-03',2,1),
+      (4,'韦一笑',48,'开发',11000,'2002-02-05',2,1),
+      (5,'常遇春',43,'开发',10500,'2004-09-07',3,1),
+      (6,'小昭',19,'程序员鼓励师',6600,'2004-10-12',2,1);
+```
+
+此时两张表还为进行关联，在部门表中删除一个部门，例如研发部，它对应的员工并未删除
+
+#### （3）添加外键约束
+
+- 建表时添加外键约束
+
+```sql
+CREATE TABLE 表名(
+		字段名 数据类型,
+		...
+		[CONSTRAINT][外键名称]FOREIGN KEY(外键字段名) REFERENCES 主表(主表列名)
+);
+```
+
+- 现有表字段增加外键约束
+
+```sql
+ALTER TABLE 表名 ADD CONSTRAINT 外键名称 FOREIGN KEY(外键字段名) REFERENCES 主表(主表列名);
+```
+
+- 删除外键
+
+```sql
+ALTER TABLE 表名 DROP FOREIGN KEY 外键名称;
+```
+
+知道语法后，就可以对前面的emp表添加外键约束
+
+```sql
+ALTER TABLE emp ADD CONSTRAINT fk_emp_dept_id FOREIGN KEY(dept_id) REFERENCES dept(id);
+```
+
+此时使用datagrip，可以看到有一个蓝色的钥匙，表示这个字段有了外键约束
+
+![image-20250714222022893](./assets/image-20250714222022893.png)
+
+此时如果像删除dept的数据，例如【总经办】，会报错
+
+```bash
+[23000][1451] Cannot delete or update a parent row: a foreign key constraint fails (`mysql_basic`.`emp`, CONSTRAINT `fk_emp_dept_id` FOREIGN KEY (`dept_id`) REFERENCES `dept` (`id`))
+```
+
+这个就保证了数据的一致性和完整性
+
+#### （4）外键删除/更新行为
+
+建立外键关联后，如果去删除/更新父表的数据时，就涉及到外键的删除/更新行为，它有如下行为：
+
+- `NO ACTION`：当在父表中删除/更新对应记录时，首先检查该记录是否有对应外键，如果有则不允许删除/更新。与 RESTRICT一致。
+- `RESTRICT`：与`NO ACTION`一致。
+- `CASCADE`：当在父表中删除/更新对应记录时，首先检查该记录是否有对应外键，如果有，则也删除/更新外键在子表中的记录
+- `SET NULL`：在父表中删除对应记录时，首先检查该记录是否有对应外键，如果有则设置子表中该外键值为`null`（这就要求该外键允许取`null`)
+- `SET DEFAULT`：当父表有变更时，子表将外键列设置成一个默认的值(Innodb不支持)
+
+对应的语法为
+
+```sql
+ALTER TABLE 表名 ADD CONSTRAINT 外键名称 FOREIGN KEY(外键字段名) REFERENCES 主表(主表列名) ON UPDATE CASCADE ON DELETE CASCADE;
+```
+
+当我们按照上面的`CASCADE`方式来设置删除/更新行为，如果修改dept的数据，例如将【总经办】的id修改为6，此时emp表对应的数据，dept_id也为6；如果删除dept的数据，例如将【总经办】的数据删掉，此时emp表对应的数据也会被删掉。
 
 ## 五、多表查询
 
