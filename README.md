@@ -425,6 +425,14 @@ INSERT INTO emp (id, workno, name, gender, age, idcard, workaddress, entrydate) 
 
 （2）所有null值不参与聚合函数的计算 
 
+（3）使用聚合函数与非聚合列一起查询时，必须通过GROUP BY指定分组依据，例如
+
+```sql
+select DATE(created_at) as dt, avg(distinct user_id) as avg_user from post 
+```
+
+报错：`[42000][1140] In aggregated query without GROUP BY, expression #1 of SELECT list contains nonaggregated column 'flask_basic.post.user_id'; this is incompatible with sql_mode=only_full_group_by`
+
 ##### ii. 基本语法
 
 `SELECT 聚合函数(字段列表) FROM 表名;`
@@ -830,6 +838,8 @@ select lpad(round(rand()*1000000, 0), 6, '0');
 - `YEAR(date)`：获取指定date的年份
 - `MONTH(date)`：获取指定date的月份
 - `DAY(date)`：获取指定date的日期
+- `DATE(time)`：获取某个时间的日期
+- `DATE_FORMAT(date, format)`: 将一个日期转为某种格式，常见的是转为月份
 - `DATE_ADD(date, INTERVAL expr type)`：返回一个日期/时间值，加上一个时间间隔expr后的时间值
 - `DATEDIFF(date1,date2)`：返回起始时间date1和 结束时间date2之间的天数
 
@@ -856,7 +866,7 @@ select datediff("2025-07-11", "2024-02-10")
 
 #### （3）实战案例
 
-案例:查询所有员工的入职天数，并根据入职天数倒序排序
+案例：查询所有员工的入职天数，并根据入职天数倒序排序
 
 ```sql
 select name, datediff(curdate(), entrydate) as diff from emp order by diff desc
@@ -1086,6 +1096,621 @@ ALTER TABLE 表名 ADD CONSTRAINT 外键名称 FOREIGN KEY(外键字段名) REFE
 当我们按照上面的`CASCADE`方式来设置删除/更新行为，如果修改dept的数据，例如将【总经办】的id修改为6，此时emp表对应的数据，dept_id也为6；如果删除dept的数据，例如将【总经办】的数据删掉，此时emp表对应的数据也会被删掉。
 
 ## 五、多表查询
+
+### 1. 多表关系
+
+项目开发中，在进行数据库表结构设计时，会根据业务需求及业务模块之间的关系，分析并设计表结构，由于业务之间相互关联，所以各个表结构之间也存在着各种联系，基本上分为三种：一对多，多对多，一对一
+
+#### （1）一对多
+
+- 案例：部门与员工的关系
+- 关系：一个部门对应多个员工，一个员工对应一个部门
+- 实现：**在多的一方建立外键**，指向一的一方的主键
+
+<img src="./assets/image-20250721212127341.png" alt="image-20250721212127341" style="zoom:50%;" />
+
+#### （2）多对多
+
+- 案例：学生与课程的关系
+- 关系：一个学生可以选修多门课程，一门课程也可以供多个学生选择
+
+- 实现：**建立第三张中间表，中间表至少包含两个外键，分别关联两方主键**
+
+![image-20250721212502196](./assets/image-20250721212502196.png)
+
+下面是一个具体的实现
+
+```sql
+create table student(
+		id int auto_increment primary key comment'主键ID',
+		name varchar(10) comment'姓名',
+		no varchar(10)comment'学号')comment'学生表';		
+insert into student values (null,'黛绮丝','2080100101'),(null,'谢逊','2000100102'),(null,'般天正','2080100103'), (null,'韦一笑','2080100104');
+
+create table course(
+		id int auto_increment primary key comment'主键ID',
+		name varchar(10)comment'课程名称')comment'课程表';
+insert into course values (null, 'Java'), (null, 'PHP'), (null , 'MySQL'), (null, 'Hadoop');
+
+create table student course(
+id int auto increment comment'主键'primary key,
+studentid int not nul comment'学生ID',courseid int not null comment'课程ID'constraint fk_courseid foreign key (courseid)references course (id),constraint fk_studentid foreign key (studentid) references student (id)
+)comment'学生课程中间表';I
+insert into student course values (null,1,1), (null, 1,2),(null,1,3), (null,2,2),(null,2,3), (null 3,4);
+
+# 中间表，来维护多对多关系
+create table student_course(
+    id int auto_increment comment '主键' primary key,
+    studentid int not null comment'学生ID',
+    courseid int not null comment'课程ID',
+    constraint fk_courseid foreign key (courseid)references course (id),
+    constraint fk_studentid foreign key (studentid) references student (id)
+)comment'学生课程中间表';
+insert into student_course values (null,1,1), (null, 1,2),(null,1,3), (null,2,2),(null,2,3), (null,3,4);
+```
+
+可以用datagrip来查看两张表之间的外键关系
+
+<img src="./assets/image-20250721213907465.png" alt="image-20250721213907465" style="zoom: 50%;" />
+
+#### （3）一对一
+
+- 案例：用户与用户详情的关系
+- 关系：**一对一关系，多用于单表拆分**，将一张表的基础字段放在一张表中，其他详情字段放在另一张表中，以提升操作效率。例如下面的例子
+
+拆分前：所有信息都存到一张表里
+
+![image-20250721214320913](./assets/image-20250721214320913.png)
+
+拆分后：一个基本信息表，一个教育信息表
+
+![image-20250721214429906](./assets/image-20250721214429906.png)
+
+- 实现：在任意一方加入外键，关联另外一方的主键，并且设置外键为唯一的(UNIQUE)
+
+下面是一个具体实现的例子
+
+```sql
+create table tb_user(
+		id int auto_increment primary key comment'主键ID',
+		name varchar(10)comment '姓名',
+		age int comment'年龄',
+		gender char(1)comment'1:男，2:女',
+		phone char(11)comment'手机号')comment '用户基本信息表';
+insert into tb_user(id, name, age, gender, phone) values
+		(null,'黄渤',45,'1','18800001111'),
+		(null,'冰冰',35,'2','18800002222'),
+		(null,'码云',55,'1','18800008888'),
+		(null,'李彦宏',50,'1','1880009999');
+
+
+create table tb_user_edu(
+    id int auto_increment primary key comment'主键ID',
+    degree varchar(20)comment'学历',
+    major varchar(50)comment'专业',
+    primaryschool varchar(50)comment'小学',
+    middleschool varchar(50)comment'中学',
+    university varchar(50)comment'大学',
+    userid int unique comment'用户ID',  # 来保证一对一的关系
+    constraint fk_userid foreign key (userid) references tb_user(id)) comment '用户教育信息表';
+    
+insert into tb_user_edu(id, degree, major, primaryschool, middleschool, university, userid) values (null, '本科','舞蹈','静安区第一小学','静安区第一中学', '北京舞蹈学院',1),
+			 (null,'硕士', '表演', '朝阳区第一小学', '朝阳区第一中学', '北京电影学院',2),
+			 (null, '本科','英语','杭州市第一小学', '杭州市第一中学', '杭州师范大学',3),
+			 (null, '本科', '应用数学', '阳泉第一小学', '阳泉区第一中学', '清华大学',4);
+```
+
+### 2. 多表查询概述
+
+#### （1）笛卡尔积
+
+- 笛卡尔积：是指在数学中，两个集合A集合和B集合的所有组合情况。
+- 注意，在多表查询时，需要消除无效的笛卡尔积。
+
+例如下面的查询：`SELECT * FROM dept, emp;`，得到的结果有20条，这是因为`dept`表有四条数据，`emp`有五条数据，结果如下：
+
+<img src="./assets/image-20250721220500649.png" alt="image-20250721220500649" style="zoom: 35%;" />
+
+如何消除无效的笛卡尔积呢？dept表和emp表是通过dept_id字段进行关联的，可以通过这个来消除笛卡尔积：`SELECT * FROM dept, emp WHERE emp.dept_id=dept.id;`，得到的数据只有5条
+
+<img src="./assets/image-20250721221523139.png" alt="image-20250721221523139" style="zoom:50%;" />
+
+#### （2）多表查询分类
+
+1、连接查询
+
+- 内连接：相当于查询A、B交集部分数据
+- 外连接：
+  - 左外连接：查询左表所有数据，以及两张表交集部分数据
+  - 右外连接：查询右表所有数据，以及两张表交集部分数据
+  - 自连接：当前表与自身的连接查询，自连接必须使用表别名
+
+<img src="./assets/image-20250721222045473.png" alt="image-20250721222045473" style="zoom:50%;" />
+
+2、子查询
+
+### 3. 内链接
+
+#### （1）查询语法
+
+- 隐式内连接：`SELECT 字段列表 FROM 表1, 表2 WHERE 条件...;`
+
+- 显示内连接：`SELECT 字段列表 FROM 表1[INNER]JOIN 表2 ON 连接条件 ...;`
+
+**内连接查询的是两张表交集的部分**
+
+<img src="./assets/image-20250721222532645.png" alt="image-20250721222532645" style="zoom:67%;" />
+
+#### （2）实战案例
+
+- 案例：查询每一个员工的姓名，及关联的部门的名称(隐式内连接实现)
+
+```sql
+select emp.name, dept.name from emp, dept where emp.dept_id=dept.id;
+```
+
+- 查询每一个员工的姓名，及关联的部门的名称(显式内连接实现)
+
+```sql
+select emp.name, dept.name from emp inner join dept on emp.dept_id = dept.id;
+# 或者省略inner
+select emp.name, dept.name from emp join dept on emp.dept_id = dept.id;
+```
+
+### 4. 外链接
+
+#### （1）连接语法
+
+- 左外连接：`SELECT 字段列表 FROM 表1 LEFT [OUTER] JOIN 表2 ON 条件 ...;`，**相当于查询表1(左表)的所有数据，和表1和表2交集部分的数据。**
+
+<img src="./assets/image-20250726221105587.png" alt="image-20250726221105587" style="zoom:50%;" />
+
+> 这里会有个疑问，表1(左表)的所有数据，和表1和表2交集部分的数据，那不就是表1吗？为什么要强调交集呢？
+
+- 右外连接：`SELECT 字段列表 FROM 表1 RIGHT [OUTER] JOIN 表2 ON 条件...;`，相当于查询表2(右表)的所有数据，和表1和表2交集部分的数据。
+
+<img src="./assets/image-20250726221321810.png" alt="image-20250726221321810" style="zoom:50%;" />
+
+#### （2）实战案例
+
+- 案例：查询emp表的所有数据，和对应的部门信息(左外连接)
+
+```sql
+select e.*, d.name from emp as e left outer join dept d on e.dept_id = d.id
+```
+
+得到的结果：可以看到最后一个数据虽然没有部门，但还是被查出来了，这就是左外连接，它会查左表的所有数据
+
+![image-20250726221948656](./assets/image-20250726221948656.png)
+
+- 查询dept表的所有数据，和对应的员工信息(右外连接)
+
+```sql
+select e.*, d.* from emp as e right outer join dept d on e.dept_id = d.id
+```
+
+得到的结果：可以看到最后三个部门虽然没有员工，但还是被查出来了，这就是右外连接，它会查右表的所有数据
+
+![image-20250726222302748](./assets/image-20250726222302748.png)
+
+**在实际项目中，我们使用左外更多，因为所有的右外都可以改为左外**，例如这个例子就可以改为
+
+```sql
+select e.*, d.* from dept as d left outer join emp as e on e.dept_id = d.id
+```
+
+### 5. 自连接
+
+#### （1）连接语法
+
+```sql
+SELECT 字段列表 FROM 表A 别名A JOIN 表A 别名B ON 条件...;
+```
+
+自连接查询，**可以是内连接查询，也可以是外连接查询。**
+
+#### （2）实战案例
+
+- 案例1：查询员工及其所属领导的名字（在emp中我们有managerid字段） 
+
+```sql
+select e1.name, e2.name from emp as e1, emp as e2 where e1.managerid=e2.id;
+```
+
+<img src="./assets/image-20250802162906362.png" alt="image-20250802162906362" style="zoom:67%;" />
+
+注意：1）这里要把emp表视作两张表； 2）一定要起别名
+
+- 案例2：查询所有员工emp及其领导的名字emp，如果员工没有领导，也需要查询出来。
+
+注意：分析这个和上一个案例的不一样，这个需求需要做外连接，它会包含左表和右表的数据
+
+```sql
+select e1.name, e2.name from emp as e1 left join emp as e2 on e1.managerid=e2.id;
+```
+
+<img src="./assets/image-20250802163035773.png" alt="image-20250802163035773" style="zoom:67%;" />
+
+
+
+### 6. 联合查询
+
+#### （1）查询语法
+
+对于union查询，就是把多次查询的结果合并起来，形成一个新的查询结果集。
+
+```sql
+SELECT 字段列表 FROM 表A ...
+UNION [ALL]
+SELECT 字段列表 FROM 表B ...;
+```
+
+#### （2）实战案例
+
+- 将薪资低于5000的员工，和年龄大于50岁的员工全部查询出来
+
+注意：注意审题，不能使用and，使用and是查两个条件都满足的员工。这里可以使用or，但是or会有性能问题。
+
+```sql
+select * from emp WHERE salary<5000 union all
+select * from emp where age>50;
+```
+
+这里查出来的结果会有一个是重复的
+
+<img src="./assets/image-20250802165149248.png" alt="image-20250802165149248" style="zoom:67%;" />
+
+只需要将union all改成union即可
+
+![image-20250802165228102](./assets/image-20250802165228102.png)
+
+#### （3）注意事项
+
+- 对于联合查询的多张表的列数**必须保持一致**，不然会报错，字段类型也需要保持一致。
+- union all 会将全部的数据直接合并在一起，union 会对合并之后的数据去重
+
+### 7. 子查询
+
+#### （1）概念
+
+- 概念：SQL语句中**嵌套SELECT语句**，称为嵌套查询，又称子查询
+
+```sql
+SELECT * FROM t1 WHERE column1=(SELECT column1 FROM t2);
+```
+
+子查询外部的语句（也就是前面的语句），可以是`INSERT`，`UPDATE`，`DELETE`，`SELECT`的任何一个
+
+- 根据子查询结果不同，分为:
+  - 标量子查询（子查询结果为单个）
+  - 列子查询（子查询结果为一列）
+  - 行子查询（子查询结果为一行）
+  - 表子查询（子查询结果为多行多列）
+- 根据子查询位置，分为：WHERE之后、FROM之后、SELECT之后。
+
+> 注意：如果子查询位于`FROM`子句中，而不是`WHERE`子句中，必须用别名，否则会报错
+>
+> ```sql
+> select avg(avg_user) from (select DATE(created_at) as dt, count(distinct user_id) as avg_user from post group by dt);
+> ```
+>
+>  报错：`Every derived table must have its own alias`
+>
+> 解决方法：
+>
+> ```sql
+> select avg(avg_user) from (select DATE(created_at) as dt, count(distinct user_id) as avg_user from post group by dt) as x;
+> ```
+
+#### （2）标量子查询
+
+##### i. 基本概念
+
+子查询返回的结果是单个值(数字、字符串、日期等)，最简单的形式，这种子查询成为标量子查询。
+
+常用的操作符: `=`，` <>`，`>`，`>=`，`<`，`<=`
+
+##### ii. 实战案例
+
+- 需求1：查询销售部的所有员工信息
+
+分解：第一步：查询销售部的部门id；第二步，查询员工信息。
+
+```sql
+# 第一步
+select id from dept where name="销售部";
+# 第二步
+select * from emp where dept_id = (select id from dept where name="销售部");
+```
+
+- 需求2：查询韦一笑入职之后的员工信息
+
+分解：第一步：查询韦一笑的入职日期；第二步：查询指定日期之后入职的员工信息
+
+```sql
+# 第一步
+select entrydate from emp where name='韦一笑';
+# 第二步
+select * from emp where entrydate>(select entrydate from emp where name='韦一笑');
+```
+
+#### （3）列子查询
+
+##### i. 基本概念
+
+子查询返回的结果是一列(可以是多行)，这种子查询称为列子查询
+
+常用的操作符：IN、NOT IN、ANY、SOME、ALL
+
+| 操作符 | 描述                                   |
+| ------ | -------------------------------------- |
+| IN     | 在指定的集合范围之内，多选一           |
+| NOT IN | 不在指定的集合范围之内                 |
+| ANY    | 子查询返回列表中，有任意一个满足即可   |
+| SOME   | 与ANY等同，使用SOME的地方都可以使用ANY |
+| ALL    | 子查询返回列表的所有值都必须满足       |
+
+##### ii. 实战案例
+
+- 需求1：查询销售部的所有员工信息
+
+分解：第一步，查询“销售部”和“市场部”的部门ID；第二步，根据部门id，查询员工信息
+
+```sql
+# 第一步
+select id from dept where name='销售部' or name='市场部';
+# 第二步
+select * from emp where dept_id in (select id from dept where name='销售部' or name='市场部');
+```
+
+- 需求2：查询比财务部所有人工资都高的员工信息
+
+分解：第一步，查询财务部的部门id；第二步，查询财务部的人员工资；第三步，比财务部所有人都高的员工信息
+
+```sql
+# 第一步
+select id from dept where name='财务部';
+# 第二步
+select salary from emp where dept_id=(select id from dept where name='财务部')
+# 第三步
+select * from emp where salary > all(select salary from emp where dept_id=(select id from dept where name='财务部'));
+```
+
+- 需求3：查询比研发部任意一人工资高的员工信息
+
+分解：第一步，查询研发部的部门id；第二步，查询研发部的人员工资；第三步，比研发部任意一人工资高的员工信息
+
+```sql
+# 第一步
+select id from dept where name='研发部';
+# 第二步
+select salary from emp where dept_id=(select id from dept where name='研发部')
+# 第三步
+select * from emp where salary > any(select salary from emp where dept_id=(select id from dept where name='研发部'));
+```
+
+#### （4）行子查询
+
+##### i. 基本概念
+
+子查询返回的结果是一行(可以是多列)，这种子查询称为行子查询
+
+常用的操作符:`=`、`<>`、`IN`、`NOT IN`
+
+##### ii. 实战案例
+
+- 需求1：查询与“张无忌”的薪资及直属领导相同的员工信息
+
+分解：第一步，查询张无忌的薪资和直属领导；第二步，查询与张无忌的薪资及直属领导相同的员工信息
+
+```sql
+# 第一步
+select salary, managerid from emp where name="张无忌"
+# 第二步
+select * from emp where salary=12500 and managerid=1;
+# 第二步的sql可以变种为
+select * from emp where (salary, managerid)=(12500,1);
+# 将第一步的sql套入进来
+select * from emp where (salary, managerid)=(select salary, managerid from emp where name="张无忌");
+```
+
+#### （5）表子查询
+
+##### i. 基本概念
+
+子查询返回的结果是多行多列，这种子查询称为表子查询
+
+常用的操作符:`IN`
+
+##### ii. 实战案例
+
+- 案例1：查询与鹿杖客，宋远桥的职位和薪资相同的员工信息
+
+分解：第一步，查询鹿杖客、宋远桥的职位和薪资；第二步，查询与鹿杖客，宋远桥的职位和薪资相同的员工信息
+
+```sql
+# 第一步
+select job, salary from emp where name="张无忌" or name="宋远桥"
+# 第二步
+select * from emp where (job, salary) in (select job, salary from emp where name="张无忌" or name="宋远桥");
+```
+
+- 案例2：查询入职日期是2006-01-01之后的员工信息，及其部门信息
+
+分解：第一步，查询入职日期是2006-01-01之后的员工信息
+
+```sql
+# 第一步
+select * from emp where entrydate>'2006-01-01';
+# 第二步, 查询这部分员工的部门信息. 这里很巧妙的用第一步的查询结果作为一张表，然后再和dept表进行联查
+select e.*, d.* from (select * from emp where entrydate > '2006-01-01') as e left join dept d on e.dept id = d.id ;
+```
+
+### 8. 多表查询案例
+
+#### （1）数据准备
+
+```sql
+# 工资等级表
+create table salgrade(
+	grade int,
+	losal int,
+	hisal int)
+comment'薪资等级表';
+# 具体工资
+insert into salgrade values(1,0,3000);
+insert into salgrade values(2,3001,5000);
+insert into salgrade values(3,5001,8000);
+insert into salgrade values(4,8001,10000);
+insert into salgrade values(5,10001,15000);
+insert into salgrade values(6,15001,20000);
+insert into salgrade values(7,20001,25000);
+insert into salgrade values(8,25001,30000);
+```
+
+#### （2）实战案例
+
+1. 查询员工的姓名、年龄、职位、部门信息。注：使用隐式内链接的方式
+
+```sql
+select e.name, e.age, e.job, d.name from emp as e, dept as d where e.dept_id = d.id
+```
+
+2. 查询年龄小于30岁的员工姓名、年龄、职位、部门信息。注：使用显式内链接的方式
+
+```sql
+select e.name, e.age, e.job, d.name from emp as e inner join dept as d on e.dept_id = d.id where e.age<30;
+```
+
+注意：这里既使用了on，也使用到了where
+
+3. 查询拥有员工的部门ID、部门名称。
+
+```sql
+select distinct d.id, d.name from emp as e, dept as e where e.dept_id = d.id;
+```
+
+注意：这里直接使用了内连接，这是因为内连接是查询两张表交集的部分，这里直接取交集，就可以取到拥有员工的部门ID、部门名称。**如果没有员工，就不会在交集里。**
+
+4. 查询所有年龄大于40岁的员工，及其归属的部门名称；如果员工没有分配部门，也需要展示出来
+
+```sql
+select e.*, d.name from emp as e left join dept as d on e.dept_id=d.id where e.age>40;
+```
+
+使用左外连接，会将左边表的数据全部展示出来
+
+5. 查询所有员工的工资等级
+
+这里需要考虑的是，emp表和salgrade如何产生联系？emp里的salary如果大于等于最小值，小于等于最大值，就属于该等级
+
+```sql
+select e.*, s.grade from emp as e, salgrade as s where e.salary >=s.losal and e.salary<=s.hisal
+```
+
+6. 查询"研发部"所有员工的信息及工资等级。
+
+注意：这里需要连查3张表，如果是有n张表，连接条件最少是n-1。
+
+连接条件：`emp.salary between salgrade.losal and salgrade.hisal`, `emp.dept_id = dept.id`
+
+查询条件：`dept.name='研发部'`
+
+```sql
+select * from emp as e, dept as d, salgrade as s where e.dept_id=d.id and e.salary between s.losal and s.hisal and d.name="研发部"
+```
+
+随着sql语句越来越长，看的时候不直观，可以使用datagrip的Reformat Code功能，来对sql语句进行格式化，这样看起来更美观
+
+<img src="./assets/image-20250811155224667.png" alt="image-20250811155224667" style="zoom:50%;" />
+
+7. 查询"研发部"员工的平均工资。
+
+```sql
+select * from emp as e, dept as d where e.dept_id = d.id and d.name="研发部";
+```
+
+8. 查询工资比"灭绝"高的员工信息
+
+```sql
+select * from emp where salary>(select salary from emp as e where e.name="韦一笑")
+```
+
+9. 查询比平均薪资高的员工信息。
+
+```sql
+select * from emp where salary>(select avg(salary) from emp)
+```
+
+10. **查询低于本部门平均工资的员工信息。**这个有一定难度
+
+解法1：
+
+分解：如果我们要查部门id为1的平均工资，可以使用
+
+```sql
+select avg(salary) from emp where dept_id=1;
+```
+
+这里我们使用子查询，缺少的是当前的部门id，可以在前面把部门id传进来，`e2.dept_id`
+
+```sql
+select * from emp as e2 where salary < (select avg(salary) from emp as e1 where e1.dept_id=e2.dept_id)
+```
+
+解法2：
+
+既然是按照部门来计算平均薪资，那么第一反应是可以使用`group by`，先使用`group by`得到一张表
+
+```sql
+select dept_id, avg(salary) as avg_salary from emp group by dept_id
+```
+
+得到的数据如下：
+
+<img src="./assets/image-20250811173159245.png" alt="image-20250811173159245" style="zoom:50%;" />
+
+再使用dept表和这个表进行左外连接
+
+```sql
+select * from emp as e1 left join (select dept_id, avg(salary) as avg_salary from emp group by dept_id) as e2 on e1.dept_id=e2.dept_id
+```
+
+得到的数据如下：
+
+![image-20250811173309556](./assets/image-20250811173309556.png)
+
+再对结果做一个筛选即可
+
+```sql
+select * from emp as e1 left join (select dept_id, avg(salary) as avg_salary from emp group by dept_id) as e2 on e1.dept_id=e2.dept_id where e1.salary<avg_salary;
+```
+
+11. 查询所有的部门信息，并统计部门的员工人数。
+
+```sql
+select d.name,count(*) from emp as e left join dept d on d.id = e.dept_id group by dept_id
+```
+
+12. 查询所有学生的选课情况，展示出学生名称，学号，课程名称
+
+注意：这里是之前介绍的三张表，`student`，`course`，`student_course`，并且`student`和`course`是多对多的关系
+
+```sql
+select s.name, s.no, c.name from student as s, course as c, student_course as sc where s.id=sc.studentid and c.id=sc.courseid
+```
+
+#### （3）案例收集
+
+1. `review_senior`表，有`creator_id`，`creator_time`，利用这两个字段，查询平均日活用户。这里需要注意：如果同一天，一个用户有多条数据，就只能算一条。
+
+```sql
+select avg(avg_user) from (select DATE(created_at) as dt, count(distinct user_id) as avg_user from post group by dt) as x;
+```
+
+这里需要注意的是，为什么要最后的这个别名x
+
+2. 查询平均月活用户
 
 ## 六、事务
 
